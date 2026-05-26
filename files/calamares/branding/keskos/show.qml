@@ -10,7 +10,7 @@ Presentation {
     property string stageText: "> Installer console online.\n> Waiting for partition and deploy-review stages to begin."
     property string summaryText: "> Live desktop: active\n> Installer backend: armed\n> Target root pipeline: ready"
     property string profileText: "- Filesystem: Arch defaults from Calamares\n- Bootloader: GRUB (EFI)\n- Desktop: KDE Plasma + KeskOS defaults\n- Personalization: deferred to Kesk Welcome after login\n- Login target: finished desktop with Welcome handoff"
-    property string notesText: "- Calamares applies required KeskOS desktop defaults automatically.\n- Browser selection, widgets, optional apps, and theme checks continue in Kesk Welcome.\n- A sanitized install report is sent to api.keskos.org.\n- Detailed installer output is written to ~/.cache/keskos/calamares-installer.log"
+    property string notesText: "- Calamares applies required KeskOS desktop defaults automatically.\n- Browser selection, widgets, optional apps, and theme checks continue in Kesk Welcome.\n- A sanitized install report is sent to api.keskos.org.\n- Detailed installer output is written to the per-user cache directory as keskos/calamares-installer.log"
     property var stageFrames: [
         "> Installer console online.\n> Waiting for partition and deploy-review stages to begin.",
         "> Pre-flight checks complete.\n> Locale, keyboard, and storage modules are standing by.",
@@ -244,7 +244,7 @@ Presentation {
 
                         Text {
                             Layout.fillWidth: true
-                            text: "> Installer state preview active. Detailed logs are still written to ~/.cache/keskos/calamares-installer.log."
+                            text: "> Installer state preview active. Detailed logs are still written to the per-user cache directory."
                             color: "#ce6a35"
                             wrapMode: Text.WordWrap
                             font.family: "JetBrainsMono Nerd Font"

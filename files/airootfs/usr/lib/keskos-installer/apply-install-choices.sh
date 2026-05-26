@@ -146,12 +146,31 @@ apply_browser_theme() {
   fi
 }
 
+apply_service_preset() {
+  local unit="$1"
+  local preset_dir="/etc/systemd/system-preset"
+  local preset_file="${preset_dir}/90-keskos-optional.preset"
+
+  mkdir -p "$preset_dir"
+  touch "$preset_file"
+
+  if ! grep -qxF "enable ${unit}" "$preset_file"; then
+    printf 'enable %s\n' "$unit" >>"$preset_file"
+  fi
+
+  if systemctl preset "$unit" >/dev/null 2>&1; then
+    log "Applied preset for ${unit}."
+  else
+    log "Recorded preset for ${unit}; systemd preset application will continue later if needed."
+  fi
+}
+
 enable_optional_services() {
-  feature_enabled "bluetooth" && systemctl enable bluetooth.service >/dev/null 2>&1 && log "Enabled bluetooth.service"
-  feature_enabled "printing" && systemctl enable cups.service >/dev/null 2>&1 && log "Enabled cups.service"
+  feature_enabled "bluetooth" && apply_service_preset bluetooth.service
+  feature_enabled "printing" && apply_service_preset cups.service
 
   if feature_enabled "docker"; then
-    systemctl enable docker.service >/dev/null 2>&1 && log "Enabled docker.service"
+    apply_service_preset docker.service
     if [[ -n "$TARGET_USER" ]] && id -u "$TARGET_USER" >/dev/null 2>&1; then
       usermod -aG docker "$TARGET_USER" >/dev/null 2>&1 || true
       log "Added ${TARGET_USER} to docker group."

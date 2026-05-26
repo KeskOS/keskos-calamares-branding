@@ -247,7 +247,11 @@ EOF
   if id -u liveuser >/dev/null 2>&1; then
     userdel -r liveuser >/dev/null 2>&1 || true
   else
-    rm -rf /home/liveuser
+    local liveuser_home=""
+    liveuser_home="$(getent passwd liveuser | cut -d: -f6)"
+    if [[ -n "$liveuser_home" ]]; then
+      rm -rf "$liveuser_home"
+    fi
   fi
 
   if command -v pacman >/dev/null 2>&1 && pacman -Qq mkinitcpio-archiso >/dev/null 2>&1; then
