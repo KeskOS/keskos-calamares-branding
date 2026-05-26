@@ -1,0 +1,295 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log() {
+  printf '[keskos-postinstall] %s\n' "$1"
+}
+
+ensure_pacman_mirrorlist() {
+  mkdir -p /etc/pacman.d
+
+  if [[ -s /etc/pacman.d/mirrorlist ]] && grep -Eq '^[[:space:]]*Server[[:space:]]*=' /etc/pacman.d/mirrorlist; then
+    return 0
+  fi
+
+  cat >/etc/pacman.d/mirrorlist <<'EOF'
+## KeskOS fallback Arch Linux mirrorlist
+Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
+EOF
+}
+
+write_installed_pacman_conf() {
+  ensure_pacman_mirrorlist
+
+  cat >/etc/pacman.conf <<'EOF'
+[options]
+HoldPkg = pacman glibc
+Architecture = auto
+CheckSpace
+ParallelDownloads = 5
+SigLevel = Required DatabaseOptional
+LocalFileSigLevel = Optional
+
+[core]
+Include = /etc/pacman.d/mirrorlist
+
+[extra]
+Include = /etc/pacman.d/mirrorlist
+
+[multilib]
+Include = /etc/pacman.d/mirrorlist
+EOF
+}
+
+apply_install_choices() {
+  local target_user="$1"
+  local helper="/usr/lib/keskos-installer/apply-install-choices.sh"
+
+  [[ -x "$helper" ]] || return 0
+
+  if [[ -n "$target_user" ]]; then
+    TARGET_USER="$target_user" "$helper" || true
+  else
+    "$helper" || true
+  fi
+}
+
+record_install_report_source() {
+  local helper="/usr/lib/kesk/install_report.py"
+
+  if [[ ! -r "$helper" ]]; then
+    log "Install report helper is unavailable; skipping install report source generation."
+    return 0
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    KESK_INSTALL_REPORT_LOG_FILE="/var/log/keskos-install-report.log" \
+      python3 "$helper" write-source --target-root / >/dev/null 2>&1 || true
+  elif command -v python >/dev/null 2>&1; then
+    KESK_INSTALL_REPORT_LOG_FILE="/var/log/keskos-install-report.log" \
+      python "$helper" write-source --target-root / >/dev/null 2>&1 || true
+  else
+    log "Python runtime is unavailable; skipping install report source generation."
+  fi
+}
+
+send_install_report_success() {
+  local helper="/usr/lib/kesk/install_report.py"
+
+  if [[ ! -r "$helper" ]]; then
+    log "Install report helper is unavailable; skipping install report send."
+    return 0
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    KESK_INSTALL_REPORT_LOG_FILE="/var/log/keskos-install-report.log" \
+      python3 "$helper" send-installer-success --target-root / >/dev/null 2>&1 || true
+  elif command -v python >/dev/null 2>&1; then
+    KESK_INSTALL_REPORT_LOG_FILE="/var/log/keskos-install-report.log" \
+      python "$helper" send-installer-success --target-root / >/dev/null 2>&1 || true
+  else
+    log "Python runtime is unavailable; skipping install report send."
+  fi
+}
+
+write_sddm_login_defaults() {
+  local target_user="$1"
+  local theme_conf="/usr/share/sddm/themes/keskos/theme.conf"
+
+  [[ -n "$target_user" ]] || return 0
+
+  mkdir -p /etc/sddm.conf.d /var/lib/sddm
+  cat >/etc/sddm.conf.d/keskos-login.conf <<'EOF'
+[Users]
+RememberLastUser=true
+RememberLastSession=true
+EOF
+
+  cat >/var/lib/sddm/state.conf <<EOF
+[Last]
+User=${target_user}
+Session=plasma.desktop
+EOF
+
+  if [[ -f "$theme_conf" ]]; then
+    if grep -q '^defaultUser=' "$theme_conf"; then
+      sed -i "s/^defaultUser=.*/defaultUser=${target_user}/" "$theme_conf"
+    else
+      printf '\ndefaultUser=%s\n' "$target_user" >>"$theme_conf"
+    fi
+  fi
+}
+
+detect_target_user() {
+  awk -F: '
+    $1 != "liveuser" &&
+    $1 != "nobody" &&
+    $3 >= 1000 &&
+    $7 !~ /(nologin|false)$/ {
+      print $1
+      exit
+    }
+  ' /etc/passwd
+}
+
+read_install_session_value() {
+  local key="$1"
+  local session_file="/var/lib/keskos/install-session.json"
+
+  [[ -r "$session_file" ]] || return 0
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$session_file" "$key" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+key = sys.argv[2]
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except (FileNotFoundError, json.JSONDecodeError):
+    raise SystemExit(0)
+value = payload.get(key)
+if value is None:
+    raise SystemExit(0)
+print(str(value).strip())
+PY
+  elif command -v python >/dev/null 2>&1; then
+    python - "$session_file" "$key" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+key = sys.argv[2]
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except (FileNotFoundError, json.JSONDecodeError):
+    raise SystemExit(0)
+value = payload.get(key)
+if value is None:
+    raise SystemExit(0)
+print(str(value).strip())
+PY
+  fi
+}
+
+write_installed_os_release() {
+  local build_id=""
+
+  build_id="$(read_install_session_value iso_build_id || true)"
+  [[ -n "$build_id" ]] || build_id="rolling"
+
+  cat >/etc/os-release <<EOF
+NAME="KeskOS"
+PRETTY_NAME="KeskOS"
+VERSION_ID="${build_id}"
+ID=arch
+ID_LIKE=arch
+BUILD_ID="${build_id}"
+IMAGE_BUILD_DATE="${build_id}"
+ANSI_COLOR="38;2;206;106;53"
+HOME_URL="https://github.com/memegeko/keskos"
+DOCUMENTATION_URL="https://github.com/memegeko/keskos"
+SUPPORT_URL="https://github.com/memegeko/keskos/issues"
+BUG_REPORT_URL="https://github.com/memegeko/keskos/issues"
+PRIVACY_POLICY_URL="https://github.com/memegeko/keskos"
+LOGO=archlinux-logo
+EOF
+}
+
+apply_kcm_cleanup_defaults() {
+  if [[ -x /usr/bin/kesk-hide-kcms ]]; then
+    /usr/bin/kesk-hide-kcms --system --quiet || true
+  fi
+
+  if command -v kcmshell6 >/dev/null 2>&1; then
+    install -d -m 0755 /usr/share/kesk/settings
+    kcmshell6 --list >/usr/share/kesk/settings/kcm-default-list.txt 2>/dev/null || true
+  elif command -v kcmshell5 >/dev/null 2>&1; then
+    install -d -m 0755 /usr/share/kesk/settings
+    kcmshell5 --list >/usr/share/kesk/settings/kcm-default-list.txt 2>/dev/null || true
+  fi
+}
+
+ensure_kesk_command_permissions() {
+  local command_path=""
+
+  for command_path in \
+    /usr/bin/kesk \
+    /usr/lib/kesk/commands/upgrade \
+    /usr/lib/kesk/commands/doctor \
+    /usr/lib/kesk/commands/repair \
+    /usr/lib/kesk/commands/settings \
+    /usr/lib/kesk/commands/welcome
+  do
+    [[ -f "$command_path" ]] || continue
+    chmod 0755 "$command_path" || true
+  done
+}
+
+cleanup_live_bits() {
+  rm -f /etc/sudoers.d/10-liveuser
+  rm -f /etc/sddm.conf.d/keskos-live.conf
+  rm -f /etc/mkinitcpio.conf.d/archiso.conf
+  rm -f /usr/share/applications/install-keskos.desktop
+  rm -f /etc/skel/Desktop/Install\ KeskOS.desktop
+  mkdir -p /usr/local/share/applications
+  cat >/usr/local/share/applications/calamares.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Hidden=true
+NoDisplay=true
+Name=Calamares
+EOF
+
+  if id -u liveuser >/dev/null 2>&1; then
+    userdel -r liveuser >/dev/null 2>&1 || true
+  else
+    rm -rf /home/liveuser
+  fi
+
+  if command -v pacman >/dev/null 2>&1 && pacman -Qq mkinitcpio-archiso >/dev/null 2>&1; then
+    pacman -Rdd --noconfirm mkinitcpio-archiso >/dev/null 2>&1 || true
+  fi
+}
+
+configure_target_user() {
+  local target_user="$1"
+  local target_home=""
+
+  target_home="$(getent passwd "$target_user" | cut -d: -f6)"
+  [[ -n "$target_home" ]] || return 0
+
+  rm -f "$target_home/Desktop/Install KeskOS.desktop"
+  TARGET_USER="$target_user" /usr/local/bin/keskos-configure-user --offline --force || true
+  chown -R "$target_user:$target_user" "$target_home" >/dev/null 2>&1 || true
+}
+
+main() {
+  local target_user=""
+
+  write_installed_os_release
+  write_installed_pacman_conf
+  cleanup_live_bits
+  ensure_kesk_command_permissions
+  apply_kcm_cleanup_defaults
+  target_user="$(detect_target_user || true)"
+  log "Applying KeskOS deployment defaults."
+  apply_install_choices "$target_user"
+  log "Recording install report source data."
+  record_install_report_source
+  log "Sending install report for successful install."
+  send_install_report_success
+  if [[ -n "$target_user" ]]; then
+    write_sddm_login_defaults "$target_user"
+    log "Configuring installed user defaults for ${target_user}"
+    configure_target_user "$target_user"
+  else
+    log "No target desktop user was detected during post-install."
+  fi
+  log "KeskOS post-install tasks complete."
+}
+
+main "$@"
