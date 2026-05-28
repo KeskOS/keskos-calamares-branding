@@ -1,6 +1,6 @@
 pkgname=keskos-calamares-branding
 pkgver=0.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc="KeskOS Calamares branding, installer configs, and post-install helpers"
 arch=(any)
 url="https://github.com/memegeko/keskos"
@@ -9,6 +9,7 @@ depends=(
   calamares
   jq
   kdialog
+  keskos-release
   konsole
   python
   rsync
