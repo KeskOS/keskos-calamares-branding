@@ -175,29 +175,19 @@ def write_text(path: Path, lines: list[str]) -> None:
 
 
 def resolve_browser(selections: dict, manifest: dict) -> tuple[dict, list[str]]:
-    warnings: list[str] = []
-    browsers = manifest["browsers"]
-    selected_key = selections["browser"]
-    resolved_key = selected_key if selected_key in browsers else "librewolf"
-    if resolved_key != selected_key:
-        warnings.append(
-            f"Requested browser '{selected_key}' was unknown to the installer manifest. Falling back to LibreWolf."
-        )
-
-    browser_meta = browsers.get(resolved_key, browsers["librewolf"])
-    package_candidates = browser_meta.get("package_candidates", [])
-    package_name = package_candidates[0] if package_candidates else ""
-
+    # Browser installation/default selection moved to Kesk Welcome first boot.
+    # Keep a stable payload shape for older report readers, but do not resolve
+    # or apply a browser from Calamares anymore.
     return (
         {
-            "selected_key": selected_key,
-            "resolved_key": resolved_key,
-            "package": package_name,
-            "desktop": browser_meta["desktop_candidates"][0] if browser_meta["desktop_candidates"] else "librewolf.desktop",
-            "family": browser_meta["family"],
-            "remove_other_browsers_after_install": bool(selections["remove_other_browsers_after_install"]),
+            "selected_key": "welcome",
+            "resolved_key": "welcome",
+            "package": "",
+            "desktop": "",
+            "family": "deferred",
+            "remove_other_browsers_after_install": False,
         },
-        warnings,
+        [],
     )
 
 
@@ -300,8 +290,7 @@ def run():
 
     STATUS = _("Resolved KeskOS deployment defaults.")
     debug(
-        f"Resolved browser={choices['browser']['resolved_key']} "
-        f"remove_other_browsers={choices['browser']['remove_other_browsers_after_install']} "
+        f"Browser setup deferred to Welcome "
         f"profile={choices['desktop_profile']} apply_browser_theme={choices['apply_browser_theme']}"
     )
     return None

@@ -1,6 +1,6 @@
 pkgname=keskos-calamares-branding
 pkgver=0.1.0
-pkgrel=2
+pkgrel=7
 pkgdesc="KeskOS Calamares branding, installer configs, and post-install helpers"
 arch=(any)
 url="https://github.com/memegeko/keskos"
@@ -41,7 +41,7 @@ package() {
   local srcroot="${startdir}/files"
 
   install -d "${pkgdir}/usr/share/calamares/branding"
-  cp -a "${srcroot}/calamares/branding/keskos" "${pkgdir}/usr/share/calamares/branding/"
+  cp -a --no-preserve=ownership "${srcroot}/calamares/branding/keskos" "${pkgdir}/usr/share/calamares/branding/"
 
   install -D -m 644 "${srcroot}/calamares/settings.conf" "${pkgdir}/etc/calamares/settings.conf"
   while IFS= read -r module_file; do
